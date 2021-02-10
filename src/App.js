@@ -1,7 +1,12 @@
-import logo from './logo.svg';
-import './App.css';
+import logo from "./logo.svg";
+import "./App.css";
 
 function App() {
+  const worker2 = new window.Worker("./data-worker.js");
+  worker2.onmessage = (e) => {
+    console.log("messge from data");
+  };
+
   return (
     <div className="App">
       <header className="App-header">

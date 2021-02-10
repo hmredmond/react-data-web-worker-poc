@@ -1,14 +1,24 @@
-import React from 'react';
-import ReactDOM from 'react-dom';
-import './index.css';
-import App from './App';
-import reportWebVitals from './reportWebVitals';
+import React from "react";
+import ReactDOM from "react-dom";
+import "./index.css";
+
+import reportWebVitals from "./reportWebVitals";
+
+import { useWorker } from "react-hooks-worker";
+
+const createWorker = () => new Worker("./data.worker", { type: "module" });
+
+const CalcFib = ({ count }) => {
+  const { result, error } = useWorker(createWorker, count);
+  if (error) return <div>Error: {error}</div>;
+  return <div>Result: {result}</div>;
+};
 
 ReactDOM.render(
   <React.StrictMode>
-    <App />
+    <CalcFib count={5} />
   </React.StrictMode>,
-  document.getElementById('root')
+  document.getElementById("root")
 );
 
 // If you want to start measuring performance in your app, pass a function
