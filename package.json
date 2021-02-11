@@ -36,10 +36,15 @@
     ]
   },
   "devDependencies": {
+    "apollo-cache-inmemory": "^1.6.6",
+    "apollo-client": "^2.6.10",
+    "apollo-link-ws": "^1.0.20",
     "customize-cra": "^1.0.0",
     "graphql": "^15.5.0",
     "graphql-tag": "^2.11.0",
+    "hash-wasm": "^4.4.1",
     "idb": "^6.0.0",
+    "idb-keyval": "^5.0.2",
     "react-app-rewired": "^2.1.8",
     "react-hooks-worker": "^1.0.0",
     "subscriptions-transport-ws": "^0.9.18",

@@ -1,28 +1,52 @@
-import logo from "./logo.svg";
+import { useRef, useState } from "react";
 import "./App.css";
 
-function App() {
-  const worker2 = new window.Worker("./data-worker.js");
-  worker2.onmessage = (e) => {
-    console.log("messge from data");
+const { get } = require("idb-keyval");
+
+function App({ worker }) {
+  const matchIdRef = useRef(0);
+  const [cMatchId, setMatchId] = useState(0);
+  const [data, setData] = useState([]);
+
+  const connectToWW = (matchId) => {
+    worker.postMessage(matchId);
+    console.log("Message posted to worker", matchId);
+
+    worker.onmessage = function (e) {
+      console.log("Message received from worker", e.data);
+
+      get(parseInt(matchId)).then((val) => {
+        if (e.data.dirty || e.data.matchId !== cMatchId) {
+          setMatchId(matchId);
+          console.log("setting data to:", val);
+          setData(val);
+        }
+        console.log(val);
+      });
+    };
   };
 
   return (
     <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
+      <input type="text" ref={matchIdRef}></input>
+      <button
+        onClick={() => {
+          connectToWW(matchIdRef.current.value);
+        }}
+      >
+        Get Data
+      </button>
+
+      <ul>
+        {data !== undefined &&
+          data.map((d) => {
+            return (
+              <li>
+                {d.match_id} - {d.timestamp}
+              </li>
+            );
+          })}
+      </ul>
     </div>
   );
 }

@@ -1,88 +1,100 @@
-import { exposeWorker } from "react-hooks-worker";
-
-const fib = (i) => (i <= 1 ? i : fib(i - 1) + fib(i - 2));
-
 const gql = require("graphql-tag");
-const { SubscriptionClient } = require("subscriptions-transport-ws");
-var WebSocketClient = require("websocket").client;
-const { openDB } = require("idb/with-async-ittr.js");
+const ApolloClient = require("apollo-client").default;
+const { WebSocketLink } = require("apollo-link-ws");
+const apolloInMemoryCache = require("apollo-cache-inmemory");
+const { InMemoryCache } = apolloInMemoryCache;
+const { md5 } = require("hash-wasm");
+
+const { get, set } = require("idb-keyval");
 
 const subscribeToMatch = async (id) => {
   console.log("in subscribe", id);
   try {
     const matchId = id && id !== undefined ? parseInt(id) : 0; //await getFirstMatchId();
+    if (matchId === undefined || matchId === 0) {
+      postMessage("No Match Id found");
+      return;
+    } else {
+      postMessage(`Match Id found:${matchId}`);
+    }
+    const query = gql`
+      subscription MyMatchSubscription($matchId: Int!) {
+        live_match_event(
+          where: { match_id: { _eq: $matchId } }
+          order_by: { part_id: desc, index: desc }
+        ) {
+          index
+          id
+          name
+          team_id
+          player_id
+          timestamp
+          match_id
+        }
+      }
+    `;
 
-    console.log(matchId);
-    const wsclient = new SubscriptionClient(
-      "wss://live-api.staging.statsbomb.com/v1/graphql",
-      {
+    const wsLink = new WebSocketLink({
+      uri: "wss://live-api.staging.statsbomb.com/v1/graphql",
+      options: {
         reconnect: true,
-      },
-      WebSocketClient
-    );
-    wsclient
-      .request({
-        query: gql`
-          subscription MyMatchSubscription($matchId: Int!) {
-            live_match_event(
-              where: { match_id: { _eq: $matchId } }
-              order_by: { part_id: desc, index: desc }
-            ) {
-              index
-              id
-              name
-              team_id
-              player_id
-              timestamp
-            }
-          }
-        `,
-        variables: { matchId },
-      })
-      .subscribe({
-        next: (response) => {
-          console.log(response);
-
-          //do DB stuff here
-          updateDB(matchId, response);
+        connectionParams: {
+          headers: {
+            "x-hasura-admin-secret": "Gp6lU48bdbPhZ7G5",
+          },
         },
-        error: console.error,
-      });
+      },
+    });
+
+    const apClient = new ApolloClient({
+      link: wsLink,
+      cache: new InMemoryCache({ addTypename: false }),
+
+      defaultOptions: {
+        watchQuery: {
+          fetchPolicy: "no-cache",
+        },
+        query: {
+          fetchPolicy: "no-cache",
+        },
+      },
+    });
+    apClient.query({ query: query, variables: { matchId } }).then((result) => {
+      console.log("results with AP", result.data.live_match_event);
+      updateDB(matchId, result.data.live_match_event);
+    });
   } catch (err) {
     console.error(err);
   }
 };
 
-subscribeToMatch(124300);
-
 const updateDB = async (matchId, data) => {
-  const db = await openDB("Matches", 1, {
-    upgrade(db) {
-      // Create a store of objects
-      const store = db.createObjectStore("matches", {
-        // The 'id' property of the object will be the key.
-        keyPath: "matchId",
-      });
-      // Create an index on the 'date' property of the objects.
-      store.createIndex("matchId", "matchId");
-    },
-  });
-
-  // Add an article:
-  await db.add("matches", {
-    matchId: matchId,
-    data: data,
+  get(matchId).then((val) => {
+    if (val === undefined || dataSetChange(val, data)) {
+      set(matchId, data)
+        .then(() => {
+          console.log(`Updating: ${matchId}`);
+          console.log("Worker: Posting message back to main script");
+          postMessage({ dirty: true, matchId: matchId });
+        })
+        .catch((err) => console.log("It failed!", err));
+    } else {
+      console.log(`Did not update: ${matchId}`);
+      console.log("Worker: Posting message back to main script");
+      postMessage({ dirty: false, matchId: matchId });
+    }
   });
 };
 
-onmessage = (e) => {
-  const { id } = e.data;
+onmessage = async (e) => {
+  console.log("Worker: Message received from main script", e.data);
+  if (e.data === undefined) return;
+  await subscribeToMatch(e.data);
+};
 
-  const startTime = new Date().getTime();
-  const response = subscribeToMatch(id);
-
-  postMessage({
-    response,
-    time: new Date().getTime() - startTime,
-  });
+const dataSetChange = async (val, data) => {
+  if (val === undefined) return true;
+  const md5Val = await md5(val);
+  const md5Data = await md5(data);
+  return md5Val !== md5Data;
 };
